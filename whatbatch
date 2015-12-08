@@ -1,0 +1,460 @@
+#!/bin/bash
+
+##############################################################################
+# arguments
+##############################################################################
+
+# Batch converts a folder (v0,v2,320)
+# ----------------------------------------
+# whatbatch a "directory"
+
+
+# Batch converts b folder (flac,v0,v2,320)
+# ----------------------------------------
+# whatbatch b "directory"
+
+
+# Downloads a URL from command line (Bandcamp) and converts it!
+# ----------------------------------------
+# whatbatch d "http://bandcampurl" "New Folder Name"
+
+
+# Downsample a FLAC 24bit to FLAC 16bit
+# ----------------------------------------
+# whatbatch f "directory"
+
+
+# Make Torrent From Directory
+# ----------------------------------------
+# whatbatch k "directory"
+
+
+# Takes a file containing list of file folders or URLs and converts!
+# ----------------------------------------
+# whatbatch l "dl.txt"
+
+##############################################################################
+# user settings
+##############################################################################
+
+# Specify tracker announce URL
+tracker="http://tracker.what.cd:34000/ANNOUNCE_CODE_HERE/announce"
+#tracker="http://tracker.what.cd:34000/asdjflkadjflksasfdsafdsff/announce"
+
+# Checking and creating files directory
+defaultFiles="files"
+
+# How many threads should whatmp3 use?
+whatmp3threads=4
+
+# Development mode (1=on, 0=off)
+devel=0
+
+
+##############################################################################
+# functions
+##############################################################################
+
+# ----------------------------------------
+# DL whatmp3
+# ----------------------------------------
+dl_whatmp3 () {
+	echo "Downloading whatmp3 into directory"
+	wget "https://raw.githubusercontent.com/RecursiveForest/whatmp3/master/whatmp3" -0 whatmp3
+}
+
+# ----------------------------------------
+# Error
+# ----------------------------------------
+endwhatbatch () {
+	local error=$1
+	echo ""
+	echo "---------------------------"
+	echo "error ---------------------"
+	echo "---------------------------"
+	echo "$error"
+	echo "Closing whatbatch..."
+	echo ""
+	exit 1
+}
+
+# ----------------------------------------
+# FLAC 24bit to 16bit
+# ----------------------------------------
+flac24_flac16 () { 
+# Input - $1 - FLAC24 folder name (no directory structure)
+	
+	local ARG2=$1
+	
+	if [ "$devel" = "1" ] ; then 
+		echo ""
+		echo ""
+		echo "---------------------------"
+		echo "local variables -----------"
+		echo "---------------------------"
+		echo "ARG2 = $ARG2"
+		echo ""
+		echo ""
+	fi
+	
+	cd "$HOME"
+	
+	if [ "$ARG2" = "" ] ; then
+		endwhatbatch "No folder provided."
+		
+	elif [ ! -d "$defaultFiles/$ARG2" ] ; then
+		echo "$defaultFiles/$ARG2"
+		endwhatbatch "Directory does not exist!"
+	fi
+	
+	# Set variables for work.
+	dcPath="$ARG2"
+	newFolder="$dcPath (FLAC16)"
+	
+	# Move into download directory
+	cd "$defaultFiles"
+	newFolderFixed=${newFolder##*/} 
+	
+	# Create new folder
+	echo "Creating new directory: $newFolderFixed..."
+	mkdir -p "$newFolderFixed"
+	cd "$newFolderFixed"
+	(cd "$HOME/$defaultFiles/$dcPath"; find -type d ! -name . -printf "\"%p\"\n") | xargs mkdir
+	
+	# Go into old folder
+	cd "$HOME/$defaultFiles/$dcPath"
+
+	echo "Starting FLAC conversion in '$dcPath'..."
+	# for file in *.flac ; do
+	
+	# Loop through all FLAC files		
+	shopt -s globstar
+	for file in **/*.flac; do	
+		
+		echo "Handling file: '$file'..."
+		
+		if [ -f '~/$defaultFiles/$newFolder/$file' ] ; then
+			# File already exists - skip
+			echo "Skipping '$HOME/$defaultFiles/$newFolder/$file', as it already exists!"
+		else
+		
+			# Make the directories for the conversion
+			echo "Converting file: '$HOME/$defaultFiles/$dcPath/$file'..."
+			
+			# FLAC Conversion
+			sox "$HOME/$defaultFiles/$dcPath/$file" -G -b 16 "$HOME/$defaultFiles/$newFolder/$file" rate -v -L 44100 dither
+			echo "Conversion complete: '$file'."
+		fi
+	done
+	
+	# Create the finished torrent
+	cd "$HOME/$defaultFiles"
+	mkatorrent "$newFolderFixed"
+}
+
+
+# ----------------------------------------
+# MP3 - V0 V2 320
+# ----------------------------------------
+# Input - $1 - FLAC16 folder name (no directory structure)
+
+mp3_v0v2320 () { 
+	
+	local ARG2=$1
+	
+	if [ "$devel" = "1" ] ; then 
+		echo ""
+		echo ""
+		echo "---------------------------"
+		echo "local variables ----------"
+		echo "---------------------------"
+		echo "ARG2 = $ARG2"
+		echo ""
+		echo ""
+	fi
+	
+	cd "$HOME"
+	varFLAC="$ARG2"
+	
+	if [ ! -d "$defaultFiles/$ARG2" ] ; then
+		echo "$defaultFiles/$ARG2"
+		endwhatbatch "Directory does not exist!"
+	fi
+	
+	# Create V0/V2/320 torrent
+	cd "$defaultFiles"
+	newFolderFixed=${ARG2##*/} 
+	echo "Converting '$newFolderFixed'..."
+	
+	if [ -f whatmp3 ]; then
+		echo "No download needed - whatmp3 exists"
+	else 
+		dl_whatmp3
+	fi
+	
+	perl whatmp3 --320 --V0 --V2 --threads="$whatmp3threads" "$newFolderFixed"
+}
+
+
+
+
+# ----------------------------------------
+# Make Torrent
+# ----------------------------------------
+# Input - $1 - File folder name (no directory structure)
+
+mkatorrent () {
+	local ARG2=$1
+	
+	if [ "$devel" = "1" ] ; then 
+		echo ""
+		echo ""
+		echo "---------------------------"
+		echo "local variables ----------"
+		echo "---------------------------"
+		echo "ARG2 = $ARG2"
+		echo ""
+		echo ""
+	fi
+	
+	newFolderFixed="$ARG2"
+	cd "$HOME/$defaultFiles"
+	fullTracker="$tracker"
+	echo "Creating .torrent file for new folder using URL '$fullTracker'..."
+	mktorrent -p -a "$fullTracker" -o "$newFolderFixed.torrent" "$newFolderFixed"
+	echo "Torrent file created: '$defaultFiles/$newFolderFixed'..."
+}
+
+
+
+
+# ----------------------------------------
+# wget and extract
+# ----------------------------------------
+# Input - $1 - FLAC24 folder name (no directory structure)
+
+wextract () {
+	local ARG2=$1
+	
+	if [ "$devel" = "1" ] ; then 
+		echo ""
+		echo ""
+		echo "---------------------------"
+		echo "local variables ----------"
+		echo "---------------------------"
+		echo "ARG2 = $ARG2"
+		echo ""
+		echo ""
+	fi
+	
+	wget "$ARG2" -O temp.zip
+	unzip temp.zip
+	rm temp.zip
+	echo "Downloaded and extracted!"
+}
+
+
+
+# ----------------------------------------
+# Text file browsing and converting!
+# ----------------------------------------
+
+readfromfile () {
+	local ARG2=$1
+	
+	if [ "$devel" = "1" ] ; then 
+		echo ""
+		echo ""
+		echo "---------------------------"
+		echo "local variables ----------"
+		echo "---------------------------"
+		echo "ARG2 = $ARG2"
+		echo ""
+		echo ""
+	fi
+	
+	while IFS="\n" read FOLDER ; do
+		cd "$HOME"
+		cd "$defaultFiles"
+		echo "Passing folder $FOLDER from file $ARG2..."
+		mp3_v0v2320 "$FOLDER"
+				
+	done <$ARG2
+	
+}
+
+##############################################################################
+# whatbatch
+##############################################################################
+echo "---------------------------"
+echo "whatbatch -----------------"
+echo "---------------------------"
+echo ""
+echo ""
+echo "---------------------------"
+echo "configuration -------------"
+echo "---------------------------"
+echo "File Directory: $defaultFiles"
+echo "Tracker URL: $tracker"
+echo "Threading Count: $whatmp3threads"
+echo "---------------------------"
+echo ""
+echo ""
+
+# Initializing arguments 1-3 for full command.
+ARG1=$1
+ARG2=$2
+ARG3=$3
+
+# If args are empty - go through help interface.
+if [ "$ARG1" = "" ] ; then 
+	echo "---------------------------"
+	echo "select config -------------"
+	echo "---------------------------"
+	echo "a - Batch converts a folder (v0,v2,320)"
+	echo "b - Batch converts b folder (flac,v0,v2,320)"
+	echo "d - Downloads a URL from Bandcamp and converts it!"
+	echo "f - Downsample a FLAC 24bit to FLAC 16bit"
+	echo "k - Create torrent from directory"
+	echo "l - Download and convert from a list!"	
+	echo "---------------------------"
+	echo "---------------------------"
+	read -p "Select your action from above: " response
+	
+	# Setting Response to argument #1
+	ARG1="$response"
+			
+	if [ "$ARG1" = "a" ] || [ "$ARG1" = "b" ] || [ "$ARG1" = "f" ] || [ "$ARG1" = "k" ] ; then
+		read -p "Provide a directory to convert from: " readdirectory
+		ARG2="$readdirectory"
+		
+	elif [ "$ARG1" = "d" ] ; then
+
+		read -p "Provide the Bandcamp download URL: " bandcampDL
+		read -p "Provide the folder name: " bandcampfolder
+		ARG2="$bandcampDL"
+		ARG3="$bandcampfolder"
+	
+	elif [ "$ARG1" = "l" ] ; then 
+		read -p "Provide the file name (must be in same directory): " listfile
+		ARG2="$listfile"
+	
+	else 
+		endwhatbatch "Improper argument passed."
+	fi
+	
+fi
+
+if [ "$devel" = "1" ] ; then 
+	echo ""
+	echo ""
+	echo "---------------------------"
+	echo "global variables ----------"
+	echo "---------------------------"
+	echo "ARG1 = $ARG1"
+	echo "ARG2 = $ARG2"
+	echo "ARG3 = $ARG3"
+	echo ""
+	echo ""
+fi
+
+mkdir -p "$defaultFiles"
+
+# ----------------------------------------
+# Downsample a FLAC 24bit to FLAC 16bit
+# ----------------------------------------
+if [ "$ARG1" = "f" ] ; then
+	flac24_flac16 "$ARG2"
+	
+
+# ----------------------------------------
+# Downloads a URL from command line (Bandcamp) and converts it (FLAC24, FLAC16, V0, V2, 320)
+# ----------------------------------------
+elif [ "$ARG1" = "d" ] ; then
+	currentDL="$ARG2"
+	
+	if [ "$currentDL" = "" ] ; then
+		endwhatbatch "Empty URL."
+	
+	elif [[ "$ARG3" == *"/"* ]] ; then 
+		endwhatbatch "Folder string contains slash."
+	
+	else 
+		# Download folder and extract to folder
+		cd "$HOME/$defaultFiles"
+		newFolderName="$ARG3"
+		mkdir "$newFolderName"
+		cd "$newFolderName"
+		
+		# Extraction and Conversion - FLAC V0 V2 320
+		wextract "$currentDL"
+		
+		#mp3_v0v2320flac "$newFolderName"
+		
+		mp3_v0v2320 "$newFolderName"
+		flac24_flac16 "$newFolderName"
+		
+		cd "$HOME/$defaultFiles"
+		mkatorrent "$newFolderName"
+		
+	fi
+
+# ----------------------------------------
+# Batch converts a folder (v0,v2,320)
+# ----------------------------------------
+elif [ "$ARG1" = "a" ] ; then 
+	
+	if [[ "$ARG2" == *"/"* ]] ; then 
+		endwhatbatch "Folder string contains slash."
+	fi
+
+	mp3_v0v2320 "$ARG2"
+	
+
+# ----------------------------------------
+# Make Torrent From Directory
+# ----------------------------------------
+elif [ "$ARG1" = "k" ] ; then 
+	
+	if [[ "$ARG2" == *"/"* ]] ; then 
+		endwhatbatch "Folder string contains slash."
+	fi
+	
+	newFolderFixed=${ARG2##*/} 
+	mkatorrent "$newFolderFixed"
+	
+	
+	
+# ----------------------------------------
+# Batch converts a folder (FLAC, V0, V2, 320)
+# ----------------------------------------
+elif [ "$ARG1" = "b" ] ; then 
+	
+	if [[ "$ARG2" == *"/"* ]] ; then 
+		endwhatbatch "Folder string contains slash."
+	fi
+	
+	mp3_v0v2320 "$ARG2"
+	flac24_flac16 "$ARG2"
+	
+	
+# ----------------------------------------
+# Batch converts all lines in a file 
+# ----------------------------------------	
+elif [ "$ARG1" = "l" ] ; then 
+	
+	if [ "$ARG2" = "" ] ; then
+		endwhatbatch "File is empty."
+		
+	elif [ -e "$ARG2" ] ; then
+		readfromfile "$ARG2"
+		
+	else
+		endwhatbatch "Weird fuckin' error here, folks."
+	fi
+	
+else 
+	endwhatbatch "This should never show up, folks."
+fi
+
+exit 1
